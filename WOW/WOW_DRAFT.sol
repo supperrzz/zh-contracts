@@ -8,18 +8,18 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 contract WOW_FIRST_DRAFT is ERC721Enumerable, Ownable {
   using Strings for uint256;
 
-  string public baseURI;
-  string public baseExtension;
+  string public baseExtension = "/sample-token-uri.json";
   string public notRevealedUri; 
   uint256 public cost = 0.01 ether;
   uint256 public maxSupply = 15000;
-  uint256 public maxMintAmount = 20;
-  uint256 public nftPerAddressLimit = 3;
+  uint256 public maxReleaseSupply = 10;
+  uint256 public maxMintAmount = 1;
+  uint256 public nftPerAddressLimit = 20;
   uint256 public currentRelease = 0;
   uint256 public characterCount = 0;
   bool public paused = false;
   bool public revealed = false;
-  bool public onlyWhitelisted = true;
+  bool public presale = true;
   bool public isMale = false;
   mapping(address => uint256) public addressMintedBalance;
   mapping (uint => Character) public characters;
@@ -28,6 +28,7 @@ contract WOW_FIRST_DRAFT is ERC721Enumerable, Ownable {
 
   struct Character {
     uint tokenId;
+    string tokenUri;
     uint release;
     bool isMale;
   }
@@ -36,78 +37,72 @@ contract WOW_FIRST_DRAFT is ERC721Enumerable, Ownable {
     string name;
     uint maleCount;
     uint femaleCount;
+    string baseUri;
   }
 
   constructor(
     string memory _name,
     string memory _symbol,
-    string memory _initBaseURI,
     string memory _initNotRevealedUri
   ) ERC721(_name, _symbol) {
-    setBaseURI(_initBaseURI);
     setNotRevealedURI(_initNotRevealedUri);
   }
 
   // internal
-  function _baseURI() internal view virtual override returns (string memory) {
-    return baseURI;
+  function flipGender() internal {
+    isMale = !isMale;
+  }
+
+  function generateTokenId() internal view returns (uint256) {
+    uint latestId = isMale ? releases[currentRelease].maleCount : releases[currentRelease].femaleCount;
+    uint tokenId = isMale ? 3000 * currentRelease + latestId : 3000 * currentRelease + latestId + 1499;
+    return tokenId;
+  }
+
+  function getCharacter(uint _tokenId) internal view returns(Character memory) {
+    return characters[_tokenId];
   }
 
   // public
-  function createRelease(string memory _name) public {
-    Release memory newRelease;
-    newRelease.name = _name;
-    releases.push(newRelease);
-  }
-
-  function getReleasesLength() public view returns (uint) {
-    return releases.length;
+  function getReleases() public view returns (Release[] memory) {
+    return releases;
   }
 
   function getReleaseInfo(uint _id) public view returns (Release memory) {
     return releases[_id];
   }
 
-  function getCurrentReleaseInfo() public view returns (Release memory) {
-    return releases[currentRelease];
-  }
-
-  function getCharacter(uint _tokenId) public view returns(Character memory) {
-    return characters[_tokenId];
+  function getReleaseSupply(uint _releaseId) public view returns (uint) {
+    uint releaseCount = releases[_releaseId].maleCount + releases[_releaseId].femaleCount;
+    return releaseCount;
   }
 
   function mint(uint256 _mintAmount) public payable {
-    // require(!paused, "the contract is paused");
-    // uint256 supply = totalSupply();
+    uint256 supply = getReleaseSupply(currentRelease);
+    uint256 ownerMintedCount = addressMintedBalance[msg.sender];
+    require(!paused, "the contract is paused");
     require(_mintAmount > 0, "need to mint at least 1 NFT");
-    // require(_mintAmount <= maxMintAmount, "max mint amount per session exceeded");
-
-    // require(supply + _mintAmount <= maxSupply, "max NFT limit exceeded");
+    require(supply + _mintAmount <= maxReleaseSupply, "max NFT limit per release exceeded");
+    require(ownerMintedCount + _mintAmount <= nftPerAddressLimit, "max NFT per address exceeded");
 
     if (msg.sender != owner()) {
-      if(onlyWhitelisted == true) {
-          require(isWhitelisted(msg.sender), "user is not whitelisted");
-          uint256 ownerMintedCount = addressMintedBalance[msg.sender];
-          require(ownerMintedCount + _mintAmount <= nftPerAddressLimit, "max NFT per address exceeded");
+      if(presale == true) {
+        require(isWhitelisted(msg.sender), "user is not whitelisted");
       }
+      require(_mintAmount <= maxMintAmount, "max mint amount per session exceeded");
       require(msg.value >= cost * _mintAmount, "insufficient funds");
     }
 
     for (uint256 i = 1; i <= _mintAmount; i++) {
       uint tokenId = generateTokenId();
-      isMale ? releases[currentRelease].maleCount++ : releases[currentRelease].femaleCount++;
-      Character memory newCharacter = Character(tokenId, currentRelease, isMale);
+      Character memory newCharacter = Character(tokenId, "", currentRelease, isMale);
       characters[tokenId] = newCharacter;
+      isMale ? releases[currentRelease].maleCount++ : releases[currentRelease].femaleCount++;
       characterCount++;
+      addressMintedBalance[msg.sender]++;
       flipGender();
       _safeMint(msg.sender, tokenId);
     }
-  }
-
-  function generateTokenId() private view returns (uint256) {
-    uint latestId = isMale ? releases[currentRelease].maleCount : releases[currentRelease].femaleCount;
-    uint tokenId = isMale ? 3000 * currentRelease + latestId : 3000 * currentRelease + latestId + 1499;
-    return tokenId;
   }
 
   function isWhitelisted(address _user) public view returns (bool) {
@@ -148,19 +143,25 @@ contract WOW_FIRST_DRAFT is ERC721Enumerable, Ownable {
         return notRevealedUri;
     }
 
-    string memory currentBaseURI = _baseURI();
+    Character memory character = getCharacter(tokenId);
+    string memory currentBaseURI = releases[currentRelease].baseUri;
+    string memory gender = character.isMale ? "/males/" : "/females/";
+
     return bytes(currentBaseURI).length > 0
-        ? string(abi.encodePacked(currentBaseURI, tokenId.toString(), baseExtension))
-        : "";
+      ? string(abi.encodePacked(currentBaseURI, gender, tokenId.toString(), baseExtension))
+      : "";
   }
 
   //only owner
-  function reveal() public onlyOwner {
-    revealed = true;
+  function createRelease(string memory _name, string memory _baseUri) public onlyOwner {
+    Release memory newRelease;
+    newRelease.name = _name;
+    newRelease.baseUri = _baseUri;
+    releases.push(newRelease);
   }
 
-  function flipGender() public onlyOwner {
-    isMale = !isMale;
+  function reveal() public onlyOwner {
+    revealed = true;
   }
 
   function setRelease(uint _newReleaseId) public onlyOwner {
@@ -178,14 +179,6 @@ contract WOW_FIRST_DRAFT is ERC721Enumerable, Ownable {
   function setmaxMintAmount(uint256 _newmaxMintAmount) public onlyOwner {
     maxMintAmount = _newmaxMintAmount;
   }
-
-  function setBaseURI(string memory _newBaseURI) public onlyOwner {
-    baseURI = _newBaseURI;
-  }
-
-  function setBaseExtension(string memory _newBaseExtension) public onlyOwner {
-    baseExtension = _newBaseExtension;
-  }
   
   function setNotRevealedURI(string memory _notRevealedURI) public onlyOwner {
     notRevealedUri = _notRevealedURI;
@@ -195,8 +188,8 @@ contract WOW_FIRST_DRAFT is ERC721Enumerable, Ownable {
     paused = _state;
   }
   
-  function setOnlyWhitelisted(bool _state) public onlyOwner {
-    onlyWhitelisted = _state;
+  function setPresale(bool _state) public onlyOwner {
+    presale = _state;
   }
   
   function whitelistUsers(address[] calldata _users) public onlyOwner {
