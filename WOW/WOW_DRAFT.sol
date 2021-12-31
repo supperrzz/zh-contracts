@@ -8,33 +8,32 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 contract WOW_FIRST_DRAFT is ERC721Enumerable, Ownable {
   using Strings for uint256;
 
-  string public baseExtension = "/sample-token-uri.json";
-  string public notRevealedUri; 
+  string private baseExtension = "/sample-token-uri.json";
+  string private notRevealedUri; 
   uint256 public cost = 0.01 ether;
   uint256 public maxSupply = 15000;
-  uint256 public maxReleaseSupply = 3000;
-  uint256 public maxMintAmount = 1;
-  uint256 public nftPerAddressLimit = 20;
-  uint256 public currentRelease = 0;
-  uint256 public characterCount = 0;
+  uint256 public maxEraSupply = 3000;
+  uint256 public maxMintAmount = 3;
+  uint256 public perAddressLimit = 20;
+  uint256 public currentEra = 0;
   bool public paused = false;
-  bool public revealed = false;
   bool public presale = true;
-  bool public isMale = false;
+  bool private isMale = false;
   mapping(address => uint256) public addressMintedBalance;
   mapping (uint => Character) public characters;
   address[] public whitelistedAddresses;
-  Release[] public releases;
+  Era[] private eras;
 
   struct Character {
     uint tokenId;
-    uint release;
+    uint era;
     bool isMale;
   }
 
-  struct Release {
+  struct Era {
     string name;
     string baseUri;
+    bool reveal;
     uint maleCount;
     uint femaleCount;
   }
@@ -48,27 +47,23 @@ contract WOW_FIRST_DRAFT is ERC721Enumerable, Ownable {
   }
 
   // public
-  function getReleases() public view returns (Release[] memory) {
-    return releases;
+  function getErasLength() public view returns (uint) {
+    return eras.length;
   }
 
-  function getReleaseInfo(uint _id) public view returns (Release memory) {
-    return releases[_id];
-  }
-
-  function getReleaseSupply(uint _releaseId) public view returns (uint) {
-    uint releaseCount = releases[_releaseId].maleCount + releases[_releaseId].femaleCount;
-    return releaseCount;
+  function getEraSupply(uint _eraId) public view returns (uint) {
+    uint eraCount = eras[_eraId].maleCount + eras[_eraId].femaleCount;
+    return eraCount;
   }
 
   function mint(uint256 _mintAmount) public payable {
-    uint256 supply = getReleaseSupply(currentRelease);
+    uint256 supply = getEraSupply(currentEra);
     uint256 ownerMintedCount = addressMintedBalance[msg.sender];
 
     require(!paused, "the contract is paused");
     require(_mintAmount > 0, "need to mint at least 1 NFT");
-    require(supply + _mintAmount <= maxReleaseSupply, "max NFT limit per release exceeded");
-    require(ownerMintedCount + _mintAmount <= nftPerAddressLimit, "max NFT per address exceeded");
+    require(supply + _mintAmount <= maxEraSupply, "max NFT limit per era exceeded");
+    require(ownerMintedCount + _mintAmount <= perAddressLimit, "max NFT per address exceeded");
 
     if (msg.sender != owner()) {
       if(presale == true) {
@@ -82,12 +77,11 @@ contract WOW_FIRST_DRAFT is ERC721Enumerable, Ownable {
       uint tokenId = generateTokenId();
       
       // generate character and add to characters array
-      Character memory newCharacter = Character(tokenId, currentRelease, isMale);
+      Character memory newCharacter = Character(tokenId, currentEra, isMale);
       characters[tokenId] = newCharacter;
 
       // update records
-      isMale ? releases[currentRelease].maleCount++ : releases[currentRelease].femaleCount++;
-      characterCount++;
+      isMale ? eras[currentEra].maleCount++ : eras[currentEra].femaleCount++;
       addressMintedBalance[msg.sender]++;
       flipGender();
       _safeMint(msg.sender, tokenId);
@@ -127,44 +121,58 @@ contract WOW_FIRST_DRAFT is ERC721Enumerable, Ownable {
       _exists(tokenId),
       "ERC721Metadata: URI query for nonexistent token"
     );
-    
-    if(revealed == false) {
-        return notRevealedUri;
+
+    Character memory character = characters[tokenId];
+
+    if(eras[character.era].reveal == false) {
+      return notRevealedUri;
     }
 
-    Character memory character = getCharacter(tokenId);
-    string memory currentBaseURI = releases[currentRelease].baseUri;
+    string memory baseUri = eras[character.era].baseUri;
     string memory gender = character.isMale ? "/males/" : "/females/";
 
-    return string(abi.encodePacked(currentBaseURI, gender, tokenId.toString(), baseExtension));
+    return string(abi.encodePacked(baseUri, gender, tokenId.toString(), baseExtension));
   }
 
   // only owner
-  function createRelease(string memory _name, string memory _baseUri) public onlyOwner {
-    Release memory newRelease;
-    newRelease.name = _name;
-    newRelease.baseUri = _baseUri;
-    releases.push(newRelease);
+  function createEra(string memory _name, string memory _baseUri) public onlyOwner {
+    require(eras.length <= 4, "Max Eras reached.");
+    Era memory newEra;
+    newEra.name = _name;
+    newEra.baseUri = _baseUri;
+    eras.push(newEra);
   }
 
-  function reveal() public onlyOwner {
-    revealed = true;
+  function updateEra(uint _eraId, string memory _name, string memory _baseUri, bool _reveal) public onlyOwner {
+    Era memory updatedEra = eras[_eraId];
+    
+    if(bytes(_name).length > 0) {
+      updatedEra.name = _name;
+    }
+    if(bytes(_baseUri).length > 0) {
+      updatedEra.baseUri = _baseUri;
+    }
+    if(_reveal) {
+      updatedEra.reveal = _reveal;
+    }
+
+    eras[_eraId] = updatedEra;
   }
 
-  function setRelease(uint _newReleaseId) public onlyOwner {
-    currentRelease = _newReleaseId;
+  function setEra(uint _newEraId) public onlyOwner {
+    currentEra = _newEraId;
   }
   
-  function setNftPerAddressLimit(uint256 _limit) public onlyOwner {
-    nftPerAddressLimit = _limit;
+  function setPerAddressLimit(uint256 _limit) public onlyOwner {
+    perAddressLimit = _limit;
   }
   
   function setCost(uint256 _newCost) public onlyOwner {
     cost = _newCost;
   }
 
-  function setmaxMintAmount(uint256 _newmaxMintAmount) public onlyOwner {
-    maxMintAmount = _newmaxMintAmount;
+  function setMaxMintAmount(uint256 _newMaxMintAmount) public onlyOwner {
+    maxMintAmount = _newMaxMintAmount;
   }
   
   function setNotRevealedURI(string memory _notRevealedURI) public onlyOwner {
@@ -190,12 +198,8 @@ contract WOW_FIRST_DRAFT is ERC721Enumerable, Ownable {
   }
 
   function generateTokenId() internal view returns (uint256) {
-    uint latestId = isMale ? releases[currentRelease].maleCount : releases[currentRelease].femaleCount;
-    uint tokenId = isMale ? 3000 * currentRelease + latestId : 3000 * currentRelease + latestId + 1499;
+    uint latestId = isMale ? eras[currentEra].maleCount : eras[currentEra].femaleCount;
+    uint tokenId = isMale ? 3000 * currentEra + latestId : 3000 * currentEra + latestId + 1499;
     return tokenId;
-  }
-
-  function getCharacter(uint _tokenId) internal view returns(Character memory) {
-    return characters[_tokenId];
   }
 }
