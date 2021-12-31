@@ -12,7 +12,7 @@ contract WOW_FIRST_DRAFT is ERC721Enumerable, Ownable {
   string public notRevealedUri; 
   uint256 public cost = 0.01 ether;
   uint256 public maxSupply = 15000;
-  uint256 public maxReleaseSupply = 10;
+  uint256 public maxReleaseSupply = 3000;
   uint256 public maxMintAmount = 1;
   uint256 public nftPerAddressLimit = 20;
   uint256 public currentRelease = 0;
@@ -28,16 +28,15 @@ contract WOW_FIRST_DRAFT is ERC721Enumerable, Ownable {
 
   struct Character {
     uint tokenId;
-    string tokenUri;
     uint release;
     bool isMale;
   }
 
   struct Release {
     string name;
+    string baseUri;
     uint maleCount;
     uint femaleCount;
-    string baseUri;
   }
 
   constructor(
@@ -46,21 +45,6 @@ contract WOW_FIRST_DRAFT is ERC721Enumerable, Ownable {
     string memory _initNotRevealedUri
   ) ERC721(_name, _symbol) {
     setNotRevealedURI(_initNotRevealedUri);
-  }
-
-  // internal
-  function flipGender() internal {
-    isMale = !isMale;
-  }
-
-  function generateTokenId() internal view returns (uint256) {
-    uint latestId = isMale ? releases[currentRelease].maleCount : releases[currentRelease].femaleCount;
-    uint tokenId = isMale ? 3000 * currentRelease + latestId : 3000 * currentRelease + latestId + 1499;
-    return tokenId;
-  }
-
-  function getCharacter(uint _tokenId) internal view returns(Character memory) {
-    return characters[_tokenId];
   }
 
   // public
@@ -80,6 +64,7 @@ contract WOW_FIRST_DRAFT is ERC721Enumerable, Ownable {
   function mint(uint256 _mintAmount) public payable {
     uint256 supply = getReleaseSupply(currentRelease);
     uint256 ownerMintedCount = addressMintedBalance[msg.sender];
+
     require(!paused, "the contract is paused");
     require(_mintAmount > 0, "need to mint at least 1 NFT");
     require(supply + _mintAmount <= maxReleaseSupply, "max NFT limit per release exceeded");
@@ -95,8 +80,12 @@ contract WOW_FIRST_DRAFT is ERC721Enumerable, Ownable {
 
     for (uint256 i = 1; i <= _mintAmount; i++) {
       uint tokenId = generateTokenId();
-      Character memory newCharacter = Character(tokenId, "", currentRelease, isMale);
+      
+      // generate character and add to characters array
+      Character memory newCharacter = Character(tokenId, currentRelease, isMale);
       characters[tokenId] = newCharacter;
+
+      // update records
       isMale ? releases[currentRelease].maleCount++ : releases[currentRelease].femaleCount++;
       characterCount++;
       addressMintedBalance[msg.sender]++;
@@ -108,7 +97,7 @@ contract WOW_FIRST_DRAFT is ERC721Enumerable, Ownable {
   function isWhitelisted(address _user) public view returns (bool) {
     for (uint i = 0; i < whitelistedAddresses.length; i++) {
       if (whitelistedAddresses[i] == _user) {
-          return true;
+        return true;
       }
     }
     return false;
@@ -147,12 +136,10 @@ contract WOW_FIRST_DRAFT is ERC721Enumerable, Ownable {
     string memory currentBaseURI = releases[currentRelease].baseUri;
     string memory gender = character.isMale ? "/males/" : "/females/";
 
-    return bytes(currentBaseURI).length > 0
-      ? string(abi.encodePacked(currentBaseURI, gender, tokenId.toString(), baseExtension))
-      : "";
+    return string(abi.encodePacked(currentBaseURI, gender, tokenId.toString(), baseExtension));
   }
 
-  //only owner
+  // only owner
   function createRelease(string memory _name, string memory _baseUri) public onlyOwner {
     Release memory newRelease;
     newRelease.name = _name;
@@ -195,5 +182,20 @@ contract WOW_FIRST_DRAFT is ERC721Enumerable, Ownable {
   function whitelistUsers(address[] calldata _users) public onlyOwner {
     delete whitelistedAddresses;
     whitelistedAddresses = _users;
+  }
+  
+  // internal
+  function flipGender() internal {
+    isMale = !isMale;
+  }
+
+  function generateTokenId() internal view returns (uint256) {
+    uint latestId = isMale ? releases[currentRelease].maleCount : releases[currentRelease].femaleCount;
+    uint tokenId = isMale ? 3000 * currentRelease + latestId : 3000 * currentRelease + latestId + 1499;
+    return tokenId;
+  }
+
+  function getCharacter(uint _tokenId) internal view returns(Character memory) {
+    return characters[_tokenId];
   }
 }
