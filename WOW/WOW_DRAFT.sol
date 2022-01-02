@@ -22,7 +22,7 @@ contract WOW_FIRST_DRAFT is ERC721Enumerable, Ownable {
   mapping(address => uint256) public addressMintedBalance;
   mapping (uint => Character) public characters;
   address[] public whitelistedAddresses;
-  Era[] private eras;
+  Era[] public eras;
 
   struct Character {
     uint tokenId;
@@ -143,7 +143,7 @@ contract WOW_FIRST_DRAFT is ERC721Enumerable, Ownable {
     eras.push(newEra);
   }
 
-  function updateEra(uint _eraId, string memory _name, string memory _baseUri, bool _reveal) public onlyOwner {
+  function updateEraInfo(uint _eraId, string memory _name, string memory _baseUri) public onlyOwner {
     Era memory updatedEra = eras[_eraId];
     
     if(bytes(_name).length > 0) {
@@ -152,9 +152,13 @@ contract WOW_FIRST_DRAFT is ERC721Enumerable, Ownable {
     if(bytes(_baseUri).length > 0) {
       updatedEra.baseUri = _baseUri;
     }
-    if(_reveal) {
-      updatedEra.reveal = _reveal;
-    }
+
+    eras[_eraId] = updatedEra;
+  }
+
+  function revealEra(uint _eraId) public onlyOwner {
+    Era memory updatedEra = eras[_eraId];
+    updatedEra.reveal = !updatedEra.reveal;
 
     eras[_eraId] = updatedEra;
   }
