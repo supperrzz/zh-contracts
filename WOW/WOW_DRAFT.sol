@@ -9,12 +9,11 @@ contract WOW_FIRST_DRAFT is ERC721Enumerable, Ownable {
   using Strings for uint256;
 
   string private baseExtension = "/sample-token-uri.json";
-  string private notRevealedUri; 
+  string private notRevealedUri;
   uint256 public cost = 0.01 ether;
-  uint256 public maxSupply = 15000;
   uint256 public maxEraSupply = 3000;
   uint256 public maxMintAmount = 3;
-  uint256 public perAddressLimit = 20;
+  uint256 public perAddressLimit = 25;
   uint256 public currentEra = 0;
   bool public paused = false;
   bool public presale = true;
@@ -22,6 +21,7 @@ contract WOW_FIRST_DRAFT is ERC721Enumerable, Ownable {
   mapping(address => uint256) public addressMintedBalance;
   mapping (uint => Character) public characters;
   address[] public whitelistedAddresses;
+  address[] public partnerAddesses;
   Era[] public eras;
 
   struct Character {
@@ -63,14 +63,19 @@ contract WOW_FIRST_DRAFT is ERC721Enumerable, Ownable {
     require(!paused, "the contract is paused");
     require(_mintAmount > 0, "need to mint at least 1 NFT");
     require(supply + _mintAmount <= maxEraSupply, "max NFT limit per era exceeded");
-    require(ownerMintedCount + _mintAmount <= perAddressLimit, "max NFT per address exceeded");
 
     if (msg.sender != owner()) {
       if(presale == true) {
-        require(isWhitelisted(msg.sender), "user is not whitelisted");
+        if(!isPartner(msg.sender)) {
+          require(isWhitelisted(msg.sender), "user is not whitelisted");
+        }
       }
+      require(ownerMintedCount + _mintAmount <= perAddressLimit, "max NFT per address exceeded");
       require(_mintAmount <= maxMintAmount, "max mint amount per session exceeded");
-      require(msg.value >= cost * _mintAmount, "insufficient funds");
+      
+      if(!isPartner(msg.sender)) {
+        require(msg.value >= cost * _mintAmount, "insufficient funds");
+      }
     }
 
     for (uint256 i = 1; i <= _mintAmount; i++) {
@@ -91,6 +96,15 @@ contract WOW_FIRST_DRAFT is ERC721Enumerable, Ownable {
   function isWhitelisted(address _user) public view returns (bool) {
     for (uint i = 0; i < whitelistedAddresses.length; i++) {
       if (whitelistedAddresses[i] == _user) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  function isPartner(address _user) public view returns (bool) {
+    for (uint i = 0; i < partnerAddesses.length; i++) {
+      if (partnerAddesses[i] == _user) {
         return true;
       }
     }
@@ -194,6 +208,11 @@ contract WOW_FIRST_DRAFT is ERC721Enumerable, Ownable {
   function whitelistUsers(address[] calldata _users) public onlyOwner {
     delete whitelistedAddresses;
     whitelistedAddresses = _users;
+  }
+
+  function setPartnerAddesses(address[] calldata _partners) public onlyOwner {
+    delete partnerAddesses;
+    partnerAddesses = _partners;
   }
   
   // internal
